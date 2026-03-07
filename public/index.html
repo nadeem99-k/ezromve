@@ -306,21 +306,46 @@
             clearLog();
 
             try {
-                log('Initiating fake session with Vercel API...');
-                // 1. Hit our proxy to Create Job
-                const createRes = await fetch('/api/proxy', {
+                log('Initiating direct session with EzRemove API...');
+                
+                // 1. Generate Fake Device ID directly in the browser
+                const deviceSerial = crypto.randomUUID().replace(/-/g, '');
+                
+                // 2. Prepare FormData just like the original API expects
+                const formData = new FormData();
+                formData.append('model_name', 'nano_banana');
+
+                // Convert base64 from client into a Blob buffer
+                const base64DataStr = base64Image.replace(/^data:image\/\w+;base64,/, "");
+                const byteCharacters = atob(base64DataStr);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: 'image/jpeg' });
+                formData.append('target_images', blob, 'image.jpg');
+
+                formData.append('prompt', prompt);
+                formData.append('ratio', 'match_input_image');
+                formData.append('image_resolution', '1K');
+
+                const headers = {
+                    'Accept': 'application/json, text/plain, */*',
+                    'Product-Serial': deviceSerial
+                };
+
+                // 3. Hit the Create Job API directly
+                const createRes = await fetch('https://api.ezremove.ai/api/ez-remove/photo-editor/create-job', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        action: 'create',
-                        payload: { image: base64Image, prompt: prompt }
-                    })
+                    headers: headers,
+                    body: formData
                 });
 
                 const data = await createRes.json();
 
                 if (data.code !== 100000 && data.code !== 200 && data.code !== 0) {
-                    throw new Error(data.message || 'API Proxy Rejected due to limit or server issue.');
+                    throw new Error(data.message || 'API Rejected due to limit or server issue.');
                 }
 
                 const jobId = data.result?.job_id || data.result?.id || (data.data && data.data.job_id);
@@ -334,35 +359,38 @@
                     }
                     throw new Error("No Job ID returned from backend API: " + JSON.stringify(data));
                 }
-                const serialToReuse = data._deviceSerial;
 
                 log(`Job created successfully. ID: ${jobId.substring(0, 8)}...`);
-                log(`Using Fake Serial: ${serialToReuse.substring(0, 8)}...`);
+                log(`Using Fake Serial: ${deviceSerial.substring(0, 8)}...`);
 
-                // 2. Poll for status
+                // 4. Poll for status directly
                 let isDone = false;
                 let attempts = 0;
+                const statusUrl = `https://api.ezremove.ai/api/ez-remove/photo-editor/get-job-result/${jobId}`;
 
                 while (!isDone && attempts < 30) {
                     await new Promise(r => setTimeout(r, 4000)); // poll every 4s
                     attempts++;
                     log(`Polling status... (Attempt ${attempts}/30)`);
 
-                    const pollRes = await fetch('/api/proxy', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: 'status',
-                            serial: serialToReuse,
-                            payload: { job_id: jobId }
-                        })
-                    });
-                    const pollData = await pollRes.json();
+                    let pollRes = await fetch(statusUrl, { method: 'GET', headers: headers });
+                    
+                    if (pollRes.status === 405 || pollRes.status === 404) {
+                        pollRes = await fetch(statusUrl, { method: 'POST', headers: headers });
+                    }
+
+                    // Mask 404s for logging
+                    let pollData;
+                    if (pollRes.status === 404) {
+                        pollData = { data: { status: 'processing' } };
+                    } else {
+                        pollData = await pollRes.json();
+                    }
 
                     const status = pollData.result?.status || pollData.data?.status;
-                    const resultUrl = pollData.result?.url || pollData.result?.image || pollData.data?.image;
+                    const resultUrl = pollData.result?.url || pollData.result?.image || pollData.data?.image || (pollData.code === 100000 && pollData.result);
 
-                    if (status === 'success' || status === 'finished' || resultUrl) {
+                    if (status === 'success' || status === 'finished' || typeof resultUrl === 'string') {
                         isDone = true;
                         resultImg.src = resultUrl || 'error.jpg';
                         resultArea.style.display = 'block';
