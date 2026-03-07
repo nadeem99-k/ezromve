@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Image Remix Generator - Unlimited</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: rgba(255, 255, 255, 0.03);
+            --border: rgba(255, 255, 255, 0.08);
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.4);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-image: radial-gradient(circle at 50% 0%, #1e1b4b 0%, var(--bg) 60%);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            padding: 2rem;
+            margin-top: 2rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            text-align: center;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #a855f7, #6366f1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            text-align: center;
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 2rem;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .upload-area:hover {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .upload-area input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .upload-text {
+            pointer-events: none;
+        }
+
+        #preview {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 8px;
+            display: none;
+            margin: 0 auto;
+            object-fit: contain;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: white;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px var(--primary-glow);
+        }
+
+        button {
+            width: 100%;
+            padding: 1rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px var(--primary-glow);
+        }
+
+        button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .result-area {
+            margin-top: 2rem;
+            text-align: center;
+            display: none;
+        }
+
+        .result-img {
+            max-width: 100%;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border);
+            animation: fadein 1s;
+        }
+
+        .loader {
+            display: none;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        .log-area {
+            margin-top: 1rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            text-align: left;
+            display: none;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes fadein {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>EzRemove AI Proxy</h1>
+        <p class="subtitle">Bypass limits using Vercel Serverless IPs natively</p>
+
+        <div class="card">
+            <div class="form-group">
+                <label>1. Upload Base Image</label>
+                <div class="upload-area" id="dropzone">
+                    <img id="preview" alt="Preview" />
+                    <div class="upload-text" id="upload-hint">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" style="margin-bottom:10px; color:var(--primary)">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                        </svg>
+                        <p>Click or drag image here</p>
+                    </div>
+                    <input type="file" id="file" accept="image/*" />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>2. Describe Changes (Prompt)</label>
+                <input type="text" id="prompt"
+                    placeholder="e.g. Change background to a cyberpunk city, highly detailed..." />
+            </div>
+
+            <button id="btn" onclick="generate()">
+                <span id="btn-text">🚀 Generate Image</span>
+                <div class="loader" id="loader"></div>
+            </button>
+
+            <div class="log-area" id="log-area"></div>
+        </div>
+
+        <div class="result-area" id="result-area">
+            <h3 style="margin-bottom:1rem; color: #a855f7;">✨ Generation Successful! ✨</h3>
+            <img id="result-img" class="result-img" alt="Generated Image" />
+        </div>
+    </div>
+
+    <script>
+        let base64Image = null;
+
+        function log(msg) {
+            const el = document.getElementById('log-area');
+            el.style.display = 'block';
+            el.innerHTML += `<div>> ${msg}</div>`;
+        }
+
+        function clearLog() {
+            document.getElementById('log-area').innerHTML = '';
+            document.getElementById('log-area').style.display = 'none';
+        }
+
+        // Handle file selection and conversion to base64
+        document.getElementById('file').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                base64Image = event.target.result;
+                document.getElementById('preview').src = base64Image;
+                document.getElementById('preview').style.display = 'block';
+                document.getElementById('upload-hint').style.display = 'none';
+            };
+            reader.readAsDataURL(file);
+        });
+
+        async function generate() {
+            if (!base64Image) return alert('Please upload an image first!');
+            const prompt = document.getElementById('prompt').value || 'remix this image';
+
+            const btn = document.getElementById('btn');
+            const btnText = document.getElementById('btn-text');
+            const loader = document.getElementById('loader');
+            const resultArea = document.getElementById('result-area');
+            const resultImg = document.getElementById('result-img');
+
+            btn.disabled = true;
+            btnText.style.display = 'none';
+            loader.style.display = 'block';
+            resultArea.style.display = 'none';
+            clearLog();
+
+            try {
+                log('Initiating fake session with Vercel API...');
+                // 1. Hit our proxy to Create Job
+                const createRes = await fetch('/api/proxy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'create',
+                        payload: { image: base64Image, prompt: prompt }
+                    })
+                });
+
+                const data = await createRes.json();
+
+                if (data.code !== 100000 && data.code !== 200 && data.code !== 0) {
+                    throw new Error(data.message || 'API Proxy Rejected due to limit or server issue.');
+                }
+
+                const jobId = data.result?.job_id || data.result?.id || (data.data && data.data.job_id);
+                if (!jobId) {
+                    // Sometimes it returns URL immediately
+                    if (data.result?.url) {
+                        resultImg.src = data.result.url;
+                        resultArea.style.display = 'block';
+                        log('Image returned immediately!');
+                        return;
+                    }
+                    throw new Error("No Job ID returned from backend API: " + JSON.stringify(data));
+                }
+                const serialToReuse = data._deviceSerial;
+
+                log(`Job created successfully. ID: ${jobId.substring(0, 8)}...`);
+                log(`Using Fake Serial: ${serialToReuse.substring(0, 8)}...`);
+
+                // 2. Poll for status
+                let isDone = false;
+                let attempts = 0;
+
+                while (!isDone && attempts < 30) {
+                    await new Promise(r => setTimeout(r, 4000)); // poll every 4s
+                    attempts++;
+                    log(`Polling status... (Attempt ${attempts}/30)`);
+
+                    const pollRes = await fetch('/api/proxy', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'status',
+                            serial: serialToReuse,
+                            payload: { job_id: jobId }
+                        })
+                    });
+                    const pollData = await pollRes.json();
+
+                    const status = pollData.result?.status || pollData.data?.status;
+                    const resultUrl = pollData.result?.url || pollData.result?.image || pollData.data?.image;
+
+                    if (status === 'success' || status === 'finished' || resultUrl) {
+                        isDone = true;
+                        resultImg.src = resultUrl || 'error.jpg';
+                        resultArea.style.display = 'block';
+                        log('Finished! Image generated.');
+                    } else if (status === 'failed' || status === 'error') {
+                        throw new Error("Job failed on their backend engine.");
+                    } else {
+                        log(`Status: ${status || 'processing'}...`);
+                    }
+                }
+
+                if (!isDone) throw new Error("Timeout waiting for image generation.");
+
+            } catch (err) {
+                alert("Error: " + err.message);
+                log("Fatal Error: " + err.message);
+                console.error(err);
+            } finally {
+                btn.disabled = false;
+                btnText.style.display = 'inline';
+                loader.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+
+</html>
