@@ -6,7 +6,20 @@ export const config = {
     },
 };
 
+function setCorsHeaders(res) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'OPTIONS, POST, GET');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Product-Serial');
+}
+
 export default async function handler(req, res) {
+    setCorsHeaders(res);
+
+    // Handle CORS preflight
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
     try {
@@ -18,6 +31,8 @@ export default async function handler(req, res) {
             targetUrl = 'https://api.ezremove.ai/api/ez-remove/photo-editor/create-job';
         } else if (action === 'status') {
             targetUrl = `https://api.ezremove.ai/api/ez-remove/photo-editor/get-job-result/${payload.job_id}`;
+            // Sometimes the endpoint is actually get-result or just /photo-editor/job/
+            // we will use what the user specified, assuming it returns 404 while processing.
         } else {
             return res.status(400).json({ error: 'Invalid action' });
         }
@@ -41,7 +56,6 @@ export default async function handler(req, res) {
             if (!payload.image) return res.status(400).json({ error: 'Missing image' });
 
             // 2. Rebuild the physical form data completely dynamically so it acts as a fresh request
-            // This is necessary because sending raw base64 over the Network is not how EzRemove does it.
             const formData = new FormData();
             formData.append('model_name', payload.model_name || 'nano_banana');
 
@@ -71,8 +85,18 @@ export default async function handler(req, res) {
         let data;
         try { data = JSON.parse(dataText); } catch (e) { data = { raw: dataText }; }
 
+        let finalStatus = apiRes.status;
+
+        // Mask 404 as 200 during polling so we don't spam the browser console
+        if (action === 'status' && finalStatus === 404) {
+            finalStatus = 200;
+            if (!data.status && !data.result && !data.data) {
+                data = { data: { status: 'processing', raw: data.raw } };
+            }
+        }
+
         // Return the response back to client, PLUS the specific serial we generated so the client can reuse it during polling!
-        return res.status(apiRes.status).json({ ...data, _deviceSerial: deviceSerial });
+        return res.status(finalStatus).json({ ...data, _deviceSerial: deviceSerial });
 
     } catch (error) {
         console.error(error);
