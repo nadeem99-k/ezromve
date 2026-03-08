@@ -57,7 +57,7 @@ export default async function handler(req, res) {
 
             // 2. Rebuild the physical form data completely dynamically so it acts as a fresh request
             const formData = new FormData();
-            formData.append('model_name', payload.model_name || 'nano_banana');
+            formData.append('model_name', payload.model_name || 'ezremove_4.0');
 
             // Convert base64 from client into a Blob buffer
             const base64Data = payload.image.replace(/^data:image\/\w+;base64,/, "");

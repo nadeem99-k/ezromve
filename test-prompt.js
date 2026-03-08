@@ -8,7 +8,7 @@ async function testEzRemoveDirect() {
     const blob = new Blob([buffer], { type: 'image/jpeg' });
 
     let formData = new FormData();
-    formData.append('model_name', 'nano_banana');
+    formData.append('model_name', 'ezremove_4.0');
     formData.append('target_images', blob, 'image.jpg');
     formData.append('prompt', 'a beautiful blue square');
     formData.append('ratio', 'match_input_image');
