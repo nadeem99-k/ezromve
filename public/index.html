@@ -306,95 +306,147 @@
             clearLog();
 
             try {
-                log('Initiating direct session with EzRemove API...');
-                
-                // 1. Generate Fake Device ID directly in the browser
+                let data = null;
+                let jobId = null;
+                let isDirect = true;
+
+                // 1. Generate Fake Device ID
                 const deviceSerial = crypto.randomUUID().replace(/-/g, '');
-                
-                // 2. Prepare FormData just like the original API expects
-                const formData = new FormData();
-                formData.append('model_name', 'nano_banana');
 
-                // Convert base64 from client into a Blob buffer
-                const base64DataStr = base64Image.replace(/^data:image\/\w+;base64,/, "");
-                const byteCharacters = atob(base64DataStr);
-                const byteNumbers = new Array(byteCharacters.length);
-                for (let i = 0; i < byteCharacters.length; i++) {
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                // --- ATTEMPT 1: DIRECT CONNECTION ---
+                log('Attempting direct connection to EzRemove API (using your network)...');
+
+                try {
+                    const formData = new FormData();
+                    formData.append('model_name', 'nano_banana');
+
+                    // Convert base64 from client into a Blob buffer
+                    const base64DataStr = base64Image.replace(/^data:image\/\w+;base64,/, "");
+                    const byteCharacters = atob(base64DataStr);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], { type: 'image/jpeg' });
+                    formData.append('target_images', blob, 'image.jpg');
+
+                    formData.append('prompt', prompt);
+                    formData.append('ratio', 'match_input_image');
+                    formData.append('image_resolution', '1K');
+
+                    const headers = {
+                        'Accept': 'application/json, text/plain, */*',
+                        'Product-Serial': deviceSerial
+                    };
+
+                    const createRes = await fetch('https://api.ezremove.ai/api/ez-remove/photo-editor/create-job', {
+                        method: 'POST',
+                        headers: headers,
+                        body: formData
+                    });
+
+                    data = await createRes.json();
+
+                    if (data.code !== 100000 && data.code !== 200 && data.code !== 0) {
+                        throw new Error('Local API limit reached.');
+                    }
+                } catch (err) {
+                    log('Direct connection limit reached or failed. Switching to Proxy Backend...');
+                    isDirect = false;
+
+                    // --- ATTEMPT 2: FALLBACK TO PROXY ---
+                    const proxyRes = await fetch('/api/proxy', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'create',
+                            serial: deviceSerial,
+                            payload: {
+                                image: base64Image,
+                                prompt: prompt,
+                                ratio: 'match_input_image',
+                                image_resolution: '1K'
+                            }
+                        })
+                    });
+
+                    data = await proxyRes.json();
+
+                    if (data.code !== 100000 && data.code !== 200 && data.code !== 0) {
+                        throw new Error(data.message || data.error || 'Proxy also rejected. Limits exceeded everywhere!');
+                    }
                 }
-                const byteArray = new Uint8Array(byteNumbers);
-                const blob = new Blob([byteArray], { type: 'image/jpeg' });
-                formData.append('target_images', blob, 'image.jpg');
 
-                formData.append('prompt', prompt);
-                formData.append('ratio', 'match_input_image');
-                formData.append('image_resolution', '1K');
-
-                const headers = {
-                    'Accept': 'application/json, text/plain, */*',
-                    'Product-Serial': deviceSerial
-                };
-
-                // 3. Hit the Create Job API directly
-                const createRes = await fetch('https://api.ezremove.ai/api/ez-remove/photo-editor/create-job', {
-                    method: 'POST',
-                    headers: headers,
-                    body: formData
-                });
-
-                const data = await createRes.json();
-
-                if (data.code !== 100000 && data.code !== 200 && data.code !== 0) {
-                    throw new Error(data.message || 'API Rejected due to limit or server issue.');
-                }
-
-                const jobId = data.result?.job_id || data.result?.id || (data.data && data.data.job_id);
+                jobId = data.result?.job_id || data.result?.id || (data.data && data.data.job_id);
                 if (!jobId) {
-                    // Sometimes it returns URL immediately
                     if (data.result?.url) {
                         resultImg.src = data.result.url;
                         resultArea.style.display = 'block';
                         log('Image returned immediately!');
                         return;
                     }
-                    throw new Error("No Job ID returned from backend API: " + JSON.stringify(data));
+                    throw new Error("No Job ID returned: " + JSON.stringify(data));
                 }
 
-                log(`Job created successfully. ID: ${jobId.substring(0, 8)}...`);
+                log(`Job created successfully via ${isDirect ? 'Direct Connection' : 'Proxy'}. ID: ${jobId.substring(0, 8)}...`);
                 log(`Using Fake Serial: ${deviceSerial.substring(0, 8)}...`);
 
-                // 4. Poll for status directly
+                // 4. Poll for status
                 let isDone = false;
                 let attempts = 0;
-                const statusUrl = `https://api.ezremove.ai/api/ez-remove/photo-editor/get-job-result/${jobId}`;
 
                 while (!isDone && attempts < 30) {
-                    await new Promise(r => setTimeout(r, 4000)); // poll every 4s
+                    await new Promise(r => setTimeout(r, 4000));
                     attempts++;
                     log(`Polling status... (Attempt ${attempts}/30)`);
 
-                    let pollRes = await fetch(statusUrl, { method: 'GET', headers: headers });
-                    
-                    if (pollRes.status === 405 || pollRes.status === 404) {
-                        pollRes = await fetch(statusUrl, { method: 'POST', headers: headers });
-                    }
-
-                    // Mask 404s for logging
                     let pollData;
-                    if (pollRes.status === 404) {
-                        pollData = { data: { status: 'processing' } };
+
+                    if (isDirect) {
+                        // Poll directly
+                        const statusUrl = `https://api.ezremove.ai/api/ez-remove/photo-editor/get-job-result/${jobId}`;
+                        const pollHeaders = {
+                            'Accept': 'application/json, text/plain, */*',
+                            'Product-Serial': deviceSerial
+                        };
+                        let pollRes = await fetch(statusUrl, { method: 'GET', headers: pollHeaders });
+                        if (pollRes.status === 405 || pollRes.status === 404) {
+                            pollRes = await fetch(statusUrl, { method: 'POST', headers: pollHeaders });
+                        }
+                        if (pollRes.status === 404) {
+                            pollData = { data: { status: 'processing' } };
+                        } else {
+                            pollData = await pollRes.json();
+                        }
                     } else {
-                        pollData = await pollRes.json();
+                        // Poll via proxy
+                        const proxyPollRes = await fetch('/api/proxy', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'status',
+                                serial: deviceSerial,
+                                payload: { job_id: jobId }
+                            })
+                        });
+                        pollData = await proxyPollRes.json();
                     }
 
                     const status = pollData.result?.status || pollData.data?.status;
                     const resultUrl = pollData.result?.url || pollData.result?.image || pollData.data?.image || (pollData.code === 100000 && pollData.result);
 
                     if (status === 'success' || status === 'finished' || typeof resultUrl === 'string') {
-                        isDone = true;
-                        resultImg.src = resultUrl || 'error.jpg';
-                        resultArea.style.display = 'block';
-                        log('Finished! Image generated.');
+                        // Make sure we have a valid string URL
+                        const finalImgUrl = typeof resultUrl === 'string' ? resultUrl : resultUrl?.url || resultUrl?.[0];
+                        if (finalImgUrl) {
+                            isDone = true;
+                            resultImg.src = finalImgUrl;
+                            resultArea.style.display = 'block';
+                            log('Finished! Image generated.');
+                        } else if (status === 'success' || status === 'finished') {
+                            log(`Status finished, but waiting for URL object resolution...`);
+                        }
                     } else if (status === 'failed' || status === 'error') {
                         throw new Error("Job failed on their backend engine.");
                     } else {
